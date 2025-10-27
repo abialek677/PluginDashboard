@@ -22,7 +22,7 @@ namespace DashboardApp
                     if (d is Action<TEvent> action)
                     {
                         try { action(ev); }
-                        catch { /* swallow/log if needed */ }
+                        catch { /* swallow or log if needed */ }
                     }
                 }
             }

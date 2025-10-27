@@ -9,8 +9,8 @@
         </Grid.RowDefinitions>
 
         <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-            <TextBox x:Name="InputTextBox" Width="600" Height="30" VerticalAlignment="Center" />
-            <Button Content="Wyślij Dane" Width="110" Height="30" Margin="8,0,0,0" Click="SendData_Click"/>
+            <TextBox x:Name="InputTextBox" Width="720" Height="30" VerticalAlignment="Center" />
+            <Button Content="Send" Width="110" Height="30" Margin="8,0,0,0" Click="SendData_Click"/>
         </StackPanel>
 
         <TabControl x:Name="WidgetsTabControl" Grid.Row="1"/>
