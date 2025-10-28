@@ -1,83 +1,130 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Collections.ObjectModel;
-using System.Composition.Hosting;
 using System.IO;
 using System.Linq;
-using System.Reflection;
+using System.Windows.Threading;
 using Contracts;
 
 namespace DashboardApp
 {
     public class PluginManager : IDisposable
     {
-        private readonly string PluginsFolder;
-        private CompositionHost? _container;
-        private readonly List<Assembly> _pluginAssemblies = new();
-        public event Action<IEnumerable<IWidget>>? WidgetsChanged;
+        private readonly Dictionary<string, PluginContext> _plugins = new();
         private FileSystemWatcher? _watcher;
+        public event Action<IEnumerable<IWidget>>? WidgetsChanged;
+        private readonly string _pluginsFolder;
+        private readonly IEventAggregator _eventAggregator;
+        
+        private Dispatcher? _dispatcher;
 
-        public void Initialize()
+        public PluginManager()
         {
-            var pluginsFolder = Path.GetFullPath(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, @"..\..\..\..\Plugins\"));
-            Directory.CreateDirectory(pluginsFolder);
-            LoadPlugins(pluginsFolder);
-            SetupWatcher(pluginsFolder);
+            _pluginsFolder = Path.GetFullPath(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, @"..\..\..\..\Plugins\"));
+            _eventAggregator = new SimpleEventAggregator();
         }
 
-        public IEnumerable<IWidget> GetWidgets()
+        public void Initialize(Dispatcher dispatcher)
         {
-            if (_container == null) return Array.Empty<IWidget>();
-            try { return _container.GetExports<IWidget>(); }
-            catch { return Array.Empty<IWidget>(); }
+            _dispatcher = dispatcher;
+            Directory.CreateDirectory(_pluginsFolder);
+            LoadExistingPlugins();
+            SetupWatcher();
         }
 
-        public void Publish<T>(T ev)
+        private void LoadExistingPlugins()
         {
-            if (_container == null) return;
-            var aggregator = _container.GetExport<IEventAggregator>();
-            aggregator?.Publish(ev);
+            foreach (var file in Directory.GetFiles(_pluginsFolder, "*.dll"))
+                LoadPlugin(file);
+
+            NotifyWidgetsChanged();
         }
 
-        private void LoadPlugins(string folder)
+        private void SetupWatcher()
         {
-            _pluginAssemblies.Clear();
-            var dlls = Directory.GetFiles(folder, "*.dll");
-            foreach (var dll in dlls)
+            _watcher = new FileSystemWatcher(_pluginsFolder, "*.dll")
             {
-                try
-                {
-                    var asm = Assembly.LoadFrom(dll);
-                    _pluginAssemblies.Add(asm);
-                }
-                catch { }
-            }
-
-            var assemblies = new List<Assembly> { Assembly.GetExecutingAssembly() };
-            assemblies.AddRange(_pluginAssemblies.Where(a => !assemblies.Contains(a)));
-            var config = new ContainerConfiguration().WithAssemblies(assemblies);
-
-            _container?.Dispose();
-            _container = config.CreateContainer();
-            WidgetsChanged?.Invoke(GetWidgets());
-        }
-
-        private void SetupWatcher(string folder)
-        {
-            _watcher = new FileSystemWatcher(folder, "*.dll")
-            {
-                EnableRaisingEvents = true
+                EnableRaisingEvents = true,
+                IncludeSubdirectories = false
             };
-            _watcher.Created += (s, e) => LoadPlugins(folder);
-            _watcher.Deleted += (s, e) => LoadPlugins(folder);
-            _watcher.Changed += (s, e) => LoadPlugins(folder);
-            _watcher.Renamed += (s, e) => LoadPlugins(folder);
+
+            _watcher.Created += (s, e) =>
+            {
+                System.Threading.Thread.Sleep(500);
+
+                _dispatcher?.Invoke(() =>
+                {
+                    LoadPlugin(e.FullPath);
+                    NotifyWidgetsChanged();
+                });
+            };
+
+            _watcher.Deleted += (s, e) =>
+            {
+                UnloadPlugin(e.FullPath);
+                NotifyWidgetsChanged();
+            };
+
+            _watcher.Renamed += (s, e) =>
+            {
+                UnloadPlugin(e.OldFullPath);
+                LoadPlugin(e.FullPath);
+                NotifyWidgetsChanged();
+            };
         }
+
+        private void LoadPlugin(string path)
+        {
+            try
+            {
+                if (_plugins.ContainsKey(path))
+                    return;
+
+                Console.WriteLine($"[PluginManager] Loading {path}");
+                var ctx = new PluginContext(path, _eventAggregator);
+                ctx.Load();
+
+                if (ctx.Widget != null)
+                {
+                    _plugins[path] = ctx;
+                    Console.WriteLine($"[PluginManager] Loaded: {ctx.Widget.Name}");
+                }
+                else
+                {
+                    ctx.Dispose();
+                    Console.WriteLine($"[PluginManager] Failed: no widget exported");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[PluginManager] Error loading {path}: {ex.Message}");
+            }
+        }
+
+
+        private void UnloadPlugin(string path)
+        {
+            if (_plugins.TryGetValue(path, out var ctx))
+            {
+                ctx.Dispose();
+                _plugins.Remove(path);
+            }
+        }
+
+        public IEnumerable<IWidget> GetWidgets() =>
+            _plugins.Values.Select(p => p.Widget).Where(w => w != null)!;
+
+        private void NotifyWidgetsChanged() =>
+            WidgetsChanged?.Invoke(GetWidgets());
+
+        public void Publish<T>(T ev) =>
+            _eventAggregator.Publish(ev);
 
         public void Dispose()
         {
-            _container?.Dispose();
             _watcher?.Dispose();
+            foreach (var ctx in _plugins.Values)
+                ctx.Dispose();
+            _plugins.Clear();
         }
     }
 }

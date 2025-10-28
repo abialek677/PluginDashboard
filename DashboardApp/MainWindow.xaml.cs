@@ -15,23 +15,44 @@ namespace DashboardApp
             InitializeComponent();
             _pluginManager = new PluginManager();
             _pluginManager.WidgetsChanged += OnWidgetsChanged;
-            _pluginManager.Initialize();
+            _pluginManager.Initialize(Dispatcher);
             OnWidgetsChanged(_pluginManager.GetWidgets());
         }
 
         private void OnWidgetsChanged(IEnumerable<IWidget> widgets)
         {
-            WidgetsTabControl.Items.Clear();
+            if (!Dispatcher.CheckAccess())
+            {
+                Dispatcher.Invoke(() => OnWidgetsChanged(widgets));
+                return;
+            }
+
+            var newWidgets = widgets.ToDictionary(w => w.Name);
+            var existingTabs = WidgetsTabControl.Items.Cast<TabItem>().ToList();
+
+            // usuń zakładki, których nie ma w nowym zbiorze
+            foreach (var tab in existingTabs)
+            {
+                if (tab.Header is string name && !newWidgets.ContainsKey(name))
+                {
+                    WidgetsTabControl.Items.Remove(tab);
+                }
+            }
+
+            // dodaj nowe widgety
             foreach (var w in widgets)
             {
-                var tab = new TabItem
+                if (!existingTabs.Any(t => (string)t.Header == w.Name))
                 {
-                    Header = w.Name ?? "Widget",
-                    Content = w.View as UIElement ?? new TextBlock { Text = w.View?.ToString() ?? "" }
-                };
-                WidgetsTabControl.Items.Add(tab);
+                    WidgetsTabControl.Items.Add(new TabItem
+                    {
+                        Header = w.Name ?? "Widget",
+                        Content = w.View as UIElement ?? new TextBlock { Text = w.View?.ToString() ?? "" }
+                    });
+                }
             }
         }
+
 
         private void SendData_Click(object sender, RoutedEventArgs e)
         {
