@@ -30,7 +30,7 @@ namespace DashboardApp
             var newWidgets = widgets.ToDictionary(w => w.Name);
             var existingTabs = WidgetsTabControl.Items.Cast<TabItem>().ToList();
 
-            // usuń zakładki, których nie ma w nowym zbiorze
+            // remove tabs of non-existing widgets
             foreach (var tab in existingTabs)
             {
                 if (tab.Header is string name && !newWidgets.ContainsKey(name))
@@ -39,10 +39,10 @@ namespace DashboardApp
                 }
             }
 
-            // dodaj nowe widgety
+            // add new widgets
             foreach (var w in widgets)
             {
-                if (!existingTabs.Any(t => (string)t.Header == w.Name))
+                if (existingTabs.All(t => (string)t.Header != w.Name))
                 {
                     WidgetsTabControl.Items.Add(new TabItem
                     {

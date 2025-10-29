@@ -21,8 +21,14 @@ namespace DashboardApp
                 {
                     if (d is Action<TEvent> action)
                     {
-                        try { action(ev); }
-                        catch { /* swallow or log if needed */ }
+                        try
+                        {
+                            action(ev);
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine($"[SimpleEventAggregator] Error: {ex.Message}");
+                        }
                     }
                 }
             }

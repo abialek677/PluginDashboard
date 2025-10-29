@@ -27,7 +27,7 @@ namespace DashboardApp
 
             var config = new ContainerConfiguration()
                 .WithAssembly(asm)
-                .WithExport<IEventAggregator>(_eventAggregator); // 💡 przekazujemy aggregator
+                .WithExport<IEventAggregator>(_eventAggregator);
 
             _container = config.CreateContainer();
             Widget = _container.GetExport<IWidget>();
